@@ -1,0 +1,118 @@
+zabbix server on centos 7
+
+# Prepare: install lamp on server
+yum install httpd -y
+systemctl start httpd
+yum install mariadb-server mariadb -y
+systemctl start mariadb
+yum install php php-mysql php-gd php-pear php-mbstring php-bcmath -y
+
+# To install EPEL repository, run the following command:
+yum install epel-release
+
+cd /usr/local/src
+wget http://jaist.dl.sourceforge.net/project/zabbix/ZABBIX%20Latest%20Stable/2.2.6/zabbix-2.2.6.tar.gz
+tar zxvf zabbix-2.2.6.tar.gz
+cd /usr/local/src/zabbix-2.2.6/database/mysql
+mysql -uroot -e 'create database zabbix character set utf8;'
+mysql -uroot -e 'insert into mysql.user(Host,User,Password) values('localhost','zabbix',password('123456'));'
+mysql -uroot -e 'flush privileges;'
+mysql -uroot -e 'grant all on zabbix.* to 'zabbix'@'127.0.0.1' identified by '123456' with grant option;'
+mysql -uroot -e 'flush privileges;'
+
+mysql -uzabbix -p123456 -hlocalhost zabbix < /usr/local/src/zabbix-2.2.6/database/mysql/schema.sql
+mysql -uzabbix -p123456 -hlocalhost zabbix < /usr/local/src/zabbix-2.2.6/database/mysql/images.sql
+mysql -uzabbix -p123456 -hlocalhost zabbix < /usr/local/src/zabbix-2.2.6/database/mysql/data.sql
+cd /usr/lib64/mysql #32位系统为/usr/lib/mysql，注意系统版本同，文件版本可能不一样，这里是16.0.0
+ln -s libmysqlclient.so.16.0.0 libmysqlclient.so #添加软连接
+ln -s libmysqlclient_r.so.16.0.0 libmysqlclient_r.so #添加软连接
+
+# install zabbix
+groupadd zabbix 
+useradd zabbix -g zabbix -s /bin/false 
+
+yum install net-snmp-devel curl curl-devel mysql-devel -y
+
+ln -s /usr/local/lib/libiconv.so.2 /usr/lib/libiconv.so.2 
+/sbin/ldconfig 
+
+cd /usr/local/src/zabbix-2.2.6 
+./configure --prefix=/usr/local/zabbix --enable-server --enable-agent --with-net-snmp --with-libcurl --enable-proxy --with-mysql=/usr/bin/mysql_config 
+make 
+make install 
+ln -s /usr/local/zabbix/sbin/* /usr/local/sbin/
+ln -s /usr/local/zabbix/bin/* /usr/local/bin/ 
+
+# add zabbix server port
+cat >>/etc/services <<EOF
+zabbix-agent 10050/tcp Zabbix Agent
+zabbix-agent 10050/udp Zabbix Agent
+zabbix-trapper 10051/tcp Zabbix Trapper
+zabbix-trapper 10051/udp Zabbix Trapper
+EOF
+
+# boot script
+cp /usr/local/src/zabbix-2.2.6/misc/init.d/fedora/core/zabbix_server /etc/rc.d/init.d/zabbix_server 
+cp /usr/local/src/zabbix-2.2.6/misc/init.d/fedora/core/zabbix_agentd /etc/rc.d/init.d/zabbix_agentd 
+chmod +x /etc/rc.d/init.d/zabbix_server 
+chmod +x /etc/rc.d/init.d/zabbix_agentd
+chkconfig zabbix_server on
+chkconfig zabbix_agentd on
+
+# change zabbix setup file
+# server
+sed -i 's/^DBUser=.*$/DBUser=zabbix/g' /usr/local/zabbix/etc/zabbix_server.conf
+# client
+sed -i 's/^.*DBPassword=.*$/DBPassword=123456/g' /usr/local/zabbix/etc/zabbix_server.conf
+mkdir -p /var/www/html/zabbix
+cp -r /usr/local/src/zabbix-2.2.6/frontends/php /var/www/html/zabbix
+chown apache:apache -R /var/www/html/zabbix
+cp /usr/local/src/zabbix-2.2.6/misc/init.d/fedora/core/zabbix_* /etc/init.d/
+sed -i 's#BASEDIR=/usr/local#BASEDIR=/usr/local/zabbix#g' /etc/init.d/zabbix_server
+sed -i 's#BASEDIR=/usr/local#BASEDIR=/usr/local/zabbix#g' /etc/init.d/zabbix_agentd
+
+cat >>/etc/php.ini <<EOF
+date.timezone = Asia/Shanghai
+max_execution_time = 300
+max_input_time = 300
+post_max_size = 32M
+memory_limit = 128M
+mbstring.func_overload = 2
+EOF
+
+cat >/var/www/html/zabbix/conf/zabbix.conf.php <<EOF
+<?php
+// Zabbix GUI configuration file
+global $DB;
+
+$DB['TYPE'] = 'MYSQL';
+$DB['SERVER'] = 'localhost';
+$DB['PORT'] = '0';
+$DB['DATABASE'] = 'zabbix';
+$DB['USER'] = 'zabbix';
+$DB['PASSWORD'] = '123456';
+
+// SCHEMA is relevant only for IBM_DB2 database
+$DB['SCHEMA'] = '';
+
+$ZBX_SERVER = 'localhost';
+$ZBX_SERVER_PORT = '10051';
+$ZBX_SERVER_NAME = '';
+
+$IMAGE_FORMAT_DEFAULT = IMAGE_FORMAT_PNG;
+?>
+EOF
+
+service iptables stop
+chkconfig --level 345 iptables off
+setenforce 0
+sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/sysconfig/selinux 
+echo "/etc/init.d/zabbix_server start" >> /etc/rc.local
+echo "/etc/init.d/zabbix_agentd start" >> /etc/rc.local
+chkconfig --level 345 mysqld on
+chkconfig --level 345 httpd on
+
+
+/etc/init.d/zabbix_server start
+/etc/init.d/zabbix_agentd start
+/etc/init.d/httpd start
