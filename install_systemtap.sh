@@ -16,16 +16,35 @@ function checkok() {
     fi
 }
 
-# test network if is up
+function checkifinstall() {
+# check 
+com=`command -v $1`
+
+    if [ $? -eq 0  ]
+    then
+        printf "$1 has be installed\n"
+    else
+        printf "begin install $1\n"
+        yum install -y $1
+        checkok
+    fi
+}
+
+
+printf "test network if is up\n"
 ping -c3 baidu.com
 checkok
+printf  "begin install epel repo \n"
+yum install -y epel-release
+checkok
 
-# download debug generic for systemtap
+printf "download debug generic for systemtap\n"
 # first install epel,wget,systemtap,kernel-devel
-yum install  -y epel-release
-yum install  -y wget
-yum install  -y systemtap
-yum install  -y kernel-devel-$release
+checkifinstall wget
+checkifinstall 
+
+
+checkifinstall kernel-devel-$release
 
 wget http://debuginfo.centos.org/7/x86_64/kernel-debuginfo-common-x86_64-$release.rpm
 checkok
