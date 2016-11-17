@@ -16,6 +16,10 @@ function checkok() {
     fi
 }
 
+# test network if is up
+ping -c3 baidu.com
+checkok
+
 # download debug generic for systemtap
 # first install epel,wget,systemtap,kernel-devel
 yum install  -y epel-release
