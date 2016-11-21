@@ -1,0 +1,48 @@
+'''
+In the master'machine , /tmp/ directory. i have follow structure
+redis/
+├── 6379
+│   └── redis_6379.conf
+├── 6380
+│   └── redis_6380.conf
+└── redis-3.2.0.tar.gz
+'''
+---
+  - hosts:	redisservers
+    remote_user:	root
+    tasks:
+    - name: get hostname
+      shell: cat /etc/hostname
+      register: host_name
+    - name: time sync
+      command:	ntpdate ntp1.aliyun.com
+    - name: copy hosts file
+      copy: src=/etc/hosts dest=/etc/hosts owner=root group=root mode=0644 force='yes'
+    - name: close firewalld
+      service: name=firewalld  enabled=yes state=stopped
+    - name: install ruby,rubygems
+      yum: name=ruby,ruby-devel,rubygems,rpm-build state=present
+    - name: install gem redis
+      # must set  redis version 3.3.1 becaus 3.3.2 can't create cluster correctly. 
+      gem: name=redis version=3.3.1  state=present
+    - name: copy redis.tar.gz
+      copy: src=/tmp/redis/redis-3.2.0.tar.gz dest=/home/redis-3.2.0.tar.gz owner=root group=root mode=0644 force='yes'
+    - name: install gcc
+      yum: name=gcc state=present
+    - name: install redis  
+      shell: cd /home/; tar zxvf /home/redis-3.2.0.tar.gz; cd /home/redis-3.2.0/src/; make; make install
+    - name: create data and log directories
+      shell: mkdir -p /home/redis-data/; mkdir -p /home/logs/redis/; mkdir -p /etc/redis/6379/; mkdir -p /etc/redis/6380/
+    - name: copy redis-trib.rb
+      copy: src=/home/redis-3.2.0/src/redis-trib.rb  dest=/usr/local/bin/redis-trib.rb remote_src=True 
+    - name: copy redis port 6379 conf file
+      copy: src=/tmp/redis/6379/redis_6379.conf  dest=/etc/redis/6379/redis_6379.conf  owner=root group=root mode=0644 force='yes'
+    - name: install redis port 6380 conf file  
+      copy: src=/tmp/redis/6380/redis_6380.conf  dest=/etc/redis/6380/redis_6380.conf  owner=root group=root mode=0644 force='yes'
+    - name: start redis server
+      shell: redis-server /etc/redis/6379/redis_6379.conf;  redis-server /etc/redis/6380/redis_6380.conf
+      
+      #notice: change the host and  confirm which host to create cluster
+    - name: create cluster
+      shell: redis-trib.rb create --replicas 1 10.10.2.176:6379 10.10.2.184:6379 10.10.2.186:6379 10.10.2.176:6380 10.10.2.184:6380 10.10.2.186:6380 
+      when: ansible_hostname  == "Test_sl1"
