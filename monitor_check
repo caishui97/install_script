@@ -1,0 +1,87 @@
+#!/usr/bin/python
+
+import os,sys,socket
+
+host = socket.gethostname()
+
+ip   = socket.gethostbyname(host)
+
+#print "hostname is: " + host
+
+print "ip addr: "  + ip
+
+print '----------step 1: disk---------------'
+
+os.system("df -h | grep ^'/dev/' > /tmp/df.txt")
+
+file = open("/tmp/df.txt","r")
+
+content = [x.rstrip("\n") for x in file]
+
+file.close()
+
+data = [x.split()[1:6]  for x in content[:]]
+
+print "disk  usage: "
+
+print (data)
+
+print '----------step 2: mem-------------'
+
+mem = {}
+
+STATS = []
+
+lines = open("/proc/meminfo").readlines()
+
+for line in  lines:
+
+        name = line.split(":")[0]
+
+        var  = line.split(":")[1].split()[0]
+
+        mem[name] = float(var)
+
+STATS[0:] = [mem['MemTotal']]
+
+STATS[1:] = [mem['MemFree']]
+
+STATS[2:] = [mem['Buffers']]
+
+STATS[3:] = [mem['Cached']]
+
+mem['MemUsed'] = mem['MemTotal'] - mem['MemFree'] - mem['Buffers'] - mem['Cached']
+
+STATS[4:] = [mem['MemUsed']]
+
+u = round((mem['MemUsed'])/(mem['MemTotal']),5)
+
+print 'mem use: ' +  '%.2f%%' %(u*100)
+
+print 'mem total: %.2f MB'  %(round((STATS[0]),5)/1024)
+
+print '\n'
+
+print '-----------step 3  cpu  info----------'
+
+# cpu loadaverage
+loadavg = {}
+f = open("/proc/loadavg")
+con = f.read().split()
+f.close()
+print  'cpu     loadavg: ' + '%.2f%%'  %(float(con[2])*100)
+
+# number of cpu
+from multiprocessing import cpu_count
+print  'cpu      number:  %d' %  cpu_count()
+
+# core of cores:
+print  'cpu core number: %d ' % int(cpu_count()/4)
+
+##  alert_info():
+if float(con[2]) > 1:
+    print 'cpu avg too big!'
+
+for i in range(0, len(data)):
+    if int(data[i][3].split('%')[0])  > 70:
+      print 'disk alert, please check!!!'
