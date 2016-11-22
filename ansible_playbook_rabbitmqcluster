@@ -1,0 +1,104 @@
+'''
+[root@CentOS rabbitmq]# cat /etc/hosts
+127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+
+192.168.219.128  CentOS
+192.168.219.129  minion1
+192.168.219.130  minion2
+'''
+
+'''
+[root@CentOS rabbitmq]# egrep -v "^#|^$" /etc/ansible/hosts
+[rabbitmqservers]
+192.168.219.129  host_name=minion1
+192.168.219.130  host_name=minion2
+'''
+
+'''
+[root@CentOS rabbitmq]# tree -h -a /tmp/rabbitmq/
+/tmp/rabbitmq/
+├── [ 17M]  erlang-18.1-1.el7.centos.x86_64.rpm
+├── [  21]  .erlang.cookie
+└── [4.9M]  rabbitmq-server-3.6.1-1.noarch.rpm
+
+0 directories, 3 files
+'''
+
+#jinja2: variable_start_string: "[%"var_string"%]"
+#
+
+---
+  - hosts: rabbitmqservers
+    remote_user: root
+    vars:
+        hostname: '[% host_name %]'
+    tasks:
+    - name: install ntp
+      yum: name=ntp state=present 
+    - name: time sync
+      shell: ntpdate ntp1.aliyun.com
+    - name: install libselinux-python
+      yum: name=libselinux-python state=present
+    - name: copy host file
+      copy: src=/etc/hosts dest=/etc/hosts  owner=root group=root mode=0644 force='yes'
+    - name: install firewalld
+      yum:  name=firewalld state=present
+    - name: close firewalld
+      service: name=firewalld enabled=no state=stopped
+    - name: copy erlang rpm
+      copy: src=/tmp/rabbitmq/erlang-18.1-1.el7.centos.x86_64.rpm dest=/home/ owner=root group=root mode=0644
+    - name: copy rabbitmq rpm
+      copy: src=/tmp/rabbitmq/rabbitmq-server-3.6.1-1.noarch.rpm dest=/home/ owner=root group=root mode=0644
+    - name: install erlang rpm
+      yum: name=/home/erlang-18.1-1.el7.centos.x86_64.rpm  state=present
+    - name: install rabbitmq rpm
+      yum:  name=/home/rabbitmq-server-3.6.1-1.noarch.rpm  state=present
+    - name: start rabbitmq server
+      service:  name=rabbitmq-server  state=started
+    - name: install web management
+      shell: rabbitmq-plugins enable rabbitmq_management
+    - name: restart rabbitmq server
+      service:  name=rabbitmq-server  state=restarted
+    - name: create admin/admin  profile 
+      shell:  rabbitmqctl add_user admin  admin
+    - name: set admin tag
+      shell: rabbitmqctl set_user_tags admin administrator
+    - name: set admin permission
+      shell: rabbitmqctl set_permissions -p "/" admin ".*" ".*" ".*"
+    - name: clear server minion2 erlang cookie
+      shell: rm -f  /var/lib/rabbitmq/.erlang.cookie
+    - name: copy erlang.cookie
+      copy: src=/tmp/rabbitmq/.erlang.cookie  dest=/var/lib/rabbitmq/  owner=rabbitmq group=rabbitmq mode=0400
+    - name: kill rabbitmq
+      shell: rabbitmqctl stop; ps aux|grep rabbitmq|grep -v grep|awk '{print $2}'|xargs kill -9; rabbitmq-server -detached
+    - name: start rabbitmq
+      service: name=rabbitmq-server enabled=yes state=restarted
+    - name: rabbitmq status
+      shell: rabbitmqctl cluster_status
+      register: result
+    - debug: msg='{{result.stdout}}'
+    - name: config rabbit cluster node 2
+      shell: rabbitmqctl  stop_app ; rabbitmqctl   join_cluster   rabbit@minion1 ; rabbitmqctl  start_app
+      when: ansible_hostname == "minion2"
+    - name: show rabbitmq cluster status
+      shell: rabbitmqctl cluster_status
+    - name: create ha  pllicy
+      shell: rabbitmqctl set_policy ha-all "^" '{"ha-mode":"all"}'
+      when: ansible_hostname == "minion1"
+    - name: add queue taxCodeInvoiceQueue
+      rabbitmq_queue: name=cmcc_zzs_taxCodeInvoiceQueue
+      when: ansible_hostname == "minion2"
+    - name: add queue cmcc_zzs_generatorInvoiceQueue
+      rabbitmq_queue: name=cmcc_zzs_generatorInvoiceQueue
+      when: ansible_hostname == "minion2"
+    - name: add queue cmcc_zzs_pushInvoiceQueue
+      rabbitmq_queue: name=cmcc_zzs_pushInvoiceQueue
+      when: ansible_hostname == "minion2"
+    - name: add queue cmcc_zzs_sentToPlatformServerQueue
+      rabbitmq_queue: cmcc_zzs_sentToPlatformServerQueue
+      when: ansible_hostname == "minion2"
+    - name: show queue list
+      shell: rabbitmqctl list_queues
+      register: result_queue
+    - debug: msg='{{result_queue.stdout}}'
