@@ -14,11 +14,11 @@ cd /home;
 groupadd mysql;  
 useradd -r -g mysql mysql;  
 mkdir -p /usr/local/mysql; 
-mkdir -p /data/mysqldb;  
+mkdir -p /data/mysql;  
 
-wget http://cdn.mysql.com//Downloads/MySQL-5.6/mysql-5.6.35.tar.gz;
-tar -zxv -f mysql-5.6.35.tar.gz;
-cd mysql-5.6.35;
+wget http://ftp.ntu.edu.tw/MySQL/Downloads/MySQL-5.6/mysql-5.6.39.tar.gz;
+tar -zxv -f mysql-5.6.39.tar.gz;
+cd mysql-5.6.39;
 cmake \
 -DCMAKE_INSTALL_PREFIX=/usr/local/mysql \
 -DMYSQL_UNIX_ADDR=/usr/local/mysql/mysql.sock \
@@ -27,7 +27,7 @@ cmake \
 -DWITH_INNOBASE_STORAGE_ENGINE=1 \
 -DWITH_ARCHIVE_STORAGE_ENGINE=1 \
 -DWITH_BLACKHOLE_STORAGE_ENGINE=1 \
--DMYSQL_DATADIR=/data/mysqldb \
+-DMYSQL_DATADIR=/data/mysql \
 -DMYSQL_TCP_PORT=3306 \
 -DENABLE_DOWNLOADS=1  
 rm -f CMakeCache.txt;
@@ -36,7 +36,7 @@ make install;
 
 cd /usr/local/mysql;
 chown -R mysql:mysql .; 
-cd /data/mysqldb; 
+cd /data/mysql; 
 chown -R mysql:mysql . ;
 
 cd /usr/local/mysql;
@@ -45,7 +45,7 @@ cp /usr/local/mysql/support-files/my-default.cnf /etc/my.cnf;
 cp support-files/mysql.server /etc/init.d/mysql; 
 
 echo "PATH=/usr/local/mysql/bin:/usr/local/mysql/lib:$PATH" >> /etc/profile;
-echo " export PATH " >> /etc/profile;
+echo "export PATH " >> /etc/profile;
 source /etc/profile;
 
 service mysql start;
