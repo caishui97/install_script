@@ -40,7 +40,7 @@ cd /data/mysql;
 chown -R mysql:mysql . ;
 
 cd /usr/local/mysql;
-scripts/mysql_install_db --user=mysql --datadir=/data/mysqldb;
+scripts/mysql_install_db --user=mysql --basedir=/usr/local/mysql --datadir=/data/mysql;
 cp /usr/local/mysql/support-files/my-default.cnf /etc/my.cnf; 
 cp support-files/mysql.server /etc/init.d/mysql; 
 
